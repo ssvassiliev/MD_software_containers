@@ -4,7 +4,7 @@ From: rocm/dev-ubuntu-24.04:7.2-complete
 %labels
     Author svassili
     Version 1.0
-    Description ROCm 7.2 Ubuntu 24.04 dev image with CMake, GCC, Python
+    Description ROCm 7.2 Ubuntu 24.04 dev image with CMake, GCC, Python and OpenMM
 
 %post
     # Update package lists
@@ -61,7 +61,7 @@ cmake .. \
   -DPYTHON_EXECUTABLE=$(command -v python3) \
   -DCMAKE_BUILD_TYPE=Release
 
-make -j$(nproc)
+make -j 8
 make install
 
 # -----------------------------
@@ -93,5 +93,5 @@ rm -rf /var/lib/apt/lists/*
     export PYTHONIOENCODING=utf-8
 
 %runscript
-    echo "Welcome to ROCm 7.2 Ubuntu 24.04 dev image"
-    exec bash "$@"
+    echo "ROCm-7.2 + Ubuntu-24.04 + OpenMM-8.5.0 development container"
+    exec "$@"
