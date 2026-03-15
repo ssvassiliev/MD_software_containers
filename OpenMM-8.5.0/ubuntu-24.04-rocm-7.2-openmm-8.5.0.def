@@ -1,0 +1,97 @@
+Bootstrap: docker
+From: rocm/dev-ubuntu-24.04:7.2-complete
+
+%labels
+    Author svassili
+    Version 1.0
+    Description ROCm 7.2 Ubuntu 24.04 dev image with CMake, GCC, Python and OpenMM
+
+%post
+    # Update package lists
+    apt-get update
+
+    # Install development tools
+    apt-get install -y \
+        netcdf-bin \
+	libnetcdf-dev \
+	python3-netcdf4 \
+    	doxygen \
+        build-essential \
+	flex \
+	bison \
+	swig \
+        cmake \
+        git \
+        python3 \
+        python3-pip \
+        python3-dev \
+        wget \
+        curl \
+        vim \
+        sudo \
+        pkg-config \
+        ca-certificates \
+        libssl-dev \
+        libffi-dev \
+	gfortran \
+	rocblas-dev \
+	rocfft-dev \
+	rocrand-dev \
+	rocsparse-dev
+
+# -----------------------------
+# Build and install OpenMM with HIP and Python bindings
+# -----------------------------
+git clone https://github.com/openmm/openmm.git /opt/openmm
+cd /opt/openmm
+mkdir -p build && cd build
+
+cmake .. \
+  -DCMAKE_INSTALL_PREFIX=/opt/openmm-hip \
+  -DCMAKE_C_COMPILER=hipcc \
+  -DCMAKE_CXX_COMPILER=hipcc \
+  -DOPENMM_BUILD_AMD_PLATFORM=ON \
+  -DAMD_HIP_SDK_DIR=/opt/rocm-7.2.0 \
+  -DCMAKE_HIP_ARCHITECTURES=gfx942 \
+  -DCMAKE_HIP_COMPILER=/opt/rocm-7.2.0/bin/hipcc \
+  -DCMAKE_HIP_FLAGS="--offload-arch=gfx942" \
+  -DOPENMM_BUILD_OPENMM_ML=ON \
+  -DOPENMM_GENERATE_API_DOCS=OFF \
+  -DBUILD_DOCS=OFF \
+  -DPYTHON_EXECUTABLE=$(command -v python3) \
+  -DCMAKE_BUILD_TYPE=Release
+
+make -j 8
+make install
+
+# -----------------------------
+# Set runtime environment for Python and plugins
+# -----------------------------
+export OPENMM_INCLUDE_PATH=/opt/openmm-hip/include
+export OPENMM_LIB_PATH=/opt/openmm-hip/lib
+export OPENMM_DIR=/opt/openmm-hip
+export PATH=$OPENMM_DIR/bin:$PATH
+export LD_LIBRARY_PATH=$OPENMM_DIR/lib:$LD_LIBRARY_PATH
+export PYTHONPATH=$OPENMM_DIR/lib/python$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')/site-packages:$PYTHONPATH
+
+# -----------------------------
+# Install Python dependencies and wrapper
+# -----------------------------
+cd python
+pip install --break-system-packages numpy scipy cython setuptools wheel packaging parmed
+pip install --break-system-packages .
+
+# -----------------------------
+# Clean up apt cache to reduce image size
+# -----------------------------
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+%environment
+    # Set default paths
+    export PATH=/usr/local/bin:$PATH
+    export PYTHONIOENCODING=utf-8
+
+%runscript
+    echo "ROCm-7.2 + Ubuntu-24.04 + OpenMM-8.5.0 development container"
+    exec "$@"
