@@ -1,0 +1,108 @@
+Bootstrap: docker
+From: nvidia/cuda:12.6.2-devel-ubuntu24.04
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get update && apt-get install -y \
+        netcdf-bin \
+	libnetcdf-dev \
+	python3-netcdf4 \
+    	doxygen \
+        build-essential \
+	flex \
+	bison \
+	swig \
+        cmake \
+        git \
+        python3 \
+        python3-pip \
+        python3-dev \
+	python3-venv \
+        wget \
+        curl \
+        vim \
+        sudo \
+        pkg-config \
+        ca-certificates \
+        libssl-dev \
+        libffi-dev \
+	gfortran \
+
+    python3 -m venv /opt/venv
+    . /opt/venv/bin/activate
+    pip install --upgrade pip setuptools wheel
+    pip install numpy scipy cython parmed mace-torch
+
+    # PyTorch
+    pip install --pre torch torchvision torchaudio \
+        --index-url https://download.pytorch.org/whl/cu126
+
+    # Build and install OpenMM   
+    # -----------------------------
+    git clone https://github.com/openmm/openmm.git /opt/openmm-src
+    cd /opt/openmm-src && mkdir build && cd build
+    cmake .. \
+      -DCMAKE_INSTALL_PREFIX=/opt/openmm \
+      -DOPENMM_BUILD_OPENMM_ML=ON \
+      -DOPENMM_BUILD_CUDA=ON \
+      -DOPENMM_GENERATE_API_DOCS=OFF \
+      -DOPENMM_BUILD_PYTHON_WRAPPERS=ON \
+      -DBUILD_DOCS=OFF \
+      -DOPENMM_BUILD_CUDA_TESTS=OFF \
+      -DOPENMM_BUILD_EXAMPLES=OFF \
+      -DBUILD_TESTING=OFF \
+      -DPYTHON_EXECUTABLE=$(command -v python) \
+      -DCMAKE_BUILD_TYPE=Release
+    make -j8 &&  make install
+    make PythonInstall
+ #   OPENMM_INCLUDE_PATH=/opt/openmm/include \
+ #   OPENMM_LIB_PATH=/opt/openmm/lib \
+ 
+    cd /opt
+    git clone https://github.com/openmm/openmm-ml.git
+    cd openmm-ml
+    pip install .
+
+    # openmm-torch 
+    cd /opt
+    git clone https://github.com/openmm/openmm-torch
+    cd openmm-torch
+    mkdir build && cd build
+    export TORCH_CUDA_ARCH_LIST="9.0+PTX"
+    cmake .. \
+      -DTorch_DIR=/opt/venv/lib/python3.12/site-packages/torch/share/cmake/Torch/ \
+      -DOPENMM_DIR=/opt/openmm \
+      -DCMAKE_PREFIX_PATH=/opt/openmm \
+  
+    make -j8 OpenMMTorch  OpenMMTorchCUDA
+    cp *.so /opt/openmm/lib/plugins/
+    make PythonInstall
+
+    # NNPOps
+    cd /opt
+    git clone https://github.com/openmm/NNPOps.git
+    cd NNPOps/src
+    pip install . --no-build-isolation
+
+    apt-get clean
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export PATH=/opt/venv/bin:$PATH
+    export LD_LIBRARY_PATH=/opt/openmm/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+    export OPENMM_PLUGIN_DIR=/opt/openmm/lib/plugins
+
+%runscript
+    python - << 'EOF'
+    import torch
+    print("Torch:", torch.__version__)
+    print("CUDA:", torch.version.cuda)
+    print("CUDA available:", torch.cuda.is_available())
+
+    import openmm
+    print("OpenMM:", openmm.version.version)
+EOF
+
